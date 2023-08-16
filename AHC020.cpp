@@ -2,7 +2,7 @@
 using namespace std;
 using ll = long long;
 # define all(qpqpq)           (qpqpq).begin(),(qpqpq).end()
-# define UNIQUE(wpwpw)        sort(ALL((wpwpw)));(wpwpw).erase(unique(ALL((wpwpw))),(wpwpw).end())
+# define UNIQUE(wpwpw)        sort(all((wpwpw)));(wpwpw).erase(unique(all((wpwpw))),(wpwpw).end())
 # define rep(i,upupu)         for(int i = 0, i##_len = (upupu);(i) < (i##_len);(i)++)
 # define len(x)               ((int)(x).size())
 template<class T> bool chmin(T& a,T b) { if(a > b){a = b; return true;} return false; }
@@ -142,6 +142,9 @@ private:
     vector<ll> P;
     vector<bool> is_in_set;
     set<int> using_power;
+    vector<vector<int>> good_P_distance;
+    vector<vector<set<int>>> current_disance_set;
+    vector<int> current_P_idx;
 
     vector<set<int>> covered_by; // 人あたりのカバーしている放送局のid
     vector<set<int>> cover_to; // 放送局あたりのカバーしている人のid
@@ -154,7 +157,10 @@ public:
 
     ll get_score() { return score = P_cost + W_cost; };
     ll get_P(int id) { return P[id]; };
-    void change_P(int id, int power);
+    int get_current_idx(int id) {return current_P_idx[id]; };
+    int get_idx_size(int id) {return len(good_P_distance[id]); };
+    void change_P_one(int id, int power);
+    void change_P_idx(int id, int new_idx);
     void output();
 };
 
@@ -176,6 +182,23 @@ Broadcasting::Broadcasting(){
     }
     is_in_set.resize(M);
     rep(i, N)using_power.insert(i);
+    good_P_distance.resize(N);
+    current_disance_set.resize(N);
+    current_P_idx.resize(N);
+    rep(i, N){
+        good_P_distance[i].push_back(0);
+        rep(j, K){
+            good_P_distance[i].push_back(get_D(X[i], Y[i], A[j], B[j]));
+        }
+        good_P_distance[i].push_back(5000);
+        sort(all(good_P_distance[i]));
+        UNIQUE(good_P_distance[i]);
+        rep(j, K){
+            int d = get_D(X[i], Y[i], A[j], B[j]);
+            current_disance_set[i][lower_bound(all(good_P_distance[i]), d) - good_P_distance[i].begin()].insert(j);
+        }
+        current_P_idx[i] = len(good_P_distance[i]) - 1;
+    }
     W_cost = get_W_cost_naivety();
 }
 
@@ -232,7 +255,7 @@ ll Broadcasting::get_W_cost_naivety(){
     return ret;
 }
 
-void Broadcasting::change_P(int id, int power){
+void Broadcasting::change_P_one(int id, int power){
     P_cost -= P[id] * P[id];
     rep(i, K){
         covered_by[i].erase(id);
@@ -250,6 +273,32 @@ void Broadcasting::change_P(int id, int power){
         using_power.erase(id);
         W_cost = get_W_cost_naivety();
     }else{
+        using_power.insert(id);
+        W_cost = get_W_cost_naivety();
+    }
+}
+
+void Broadcasting::change_P_idx(int id, int new_idx){
+    if(current_P_idx[id] == new_idx)return;
+    P_cost -= P[id] * P[id];
+    for(int i = current_P_idx[id] + 1;i <= new_idx;i++){
+        for(auto people : current_disance_set[id][i]){
+            covered_by[people].insert(id);
+            cover_to[id].insert(people);
+        }
+    }
+    for(int i = new_idx + 1;i <= current_P_idx[id];i++){
+        for(auto people : current_disance_set[id][i]){
+            covered_by[people].erase(id);
+            cover_to[id].erase(people);
+        }
+    }
+    P[id] = good_P_distance[id][new_idx];
+    P_cost += good_P_distance[id][new_idx] * good_P_distance[id][new_idx];
+    if(P[id] == 0){
+        using_power.erase(id);
+        W_cost = get_W_cost_naivety();
+    }else if(current_P_idx[id] == 0){
         using_power.insert(id);
         W_cost = get_W_cost_naivety();
     }
@@ -294,15 +343,47 @@ void SinglePExchange::exec(){
     
     id = RND(0, N - 1);
     old_P = broadcasting->get_P(id);
-    broadcasting->change_P(id, max(0, old_P - RND(0, 1000)));
+    broadcasting->change_P_one(id, max(0, old_P - RND(0, 1000)));
 }
 
 void SinglePExchange::roll_back(){
-    broadcasting->change_P(id, old_P);
+    broadcasting->change_P_one(id, old_P);
 }
 
+
+// P の値を人の集合が変化するまで減らす
+class SinglePExchangeByIdx : Neighborhood{
+private:
+    SinglePExchangeByIdx(Broadcasting *_broadcasting){ broadcasting = _broadcasting; };
+    int id;
+    int old_idx;
+public:
+    static Neighborhood *neighborhood;
+    static Neighborhood *get_object(Broadcasting *Broadcasting){
+        if(neighborhood == nullptr){
+            neighborhood = new SinglePExchangeByIdx(Broadcasting);
+        }
+        return neighborhood;
+    }
+    void exec();
+    void roll_back();
+    ll score() {return broadcasting->get_score(); };
+};
+
+Neighborhood *SinglePExchangeByIdx::neighborhood = nullptr;
+
+void SinglePExchangeByIdx::exec(){
+    
+    id = RND(0, N - 1);
+    old_idx = broadcasting->get_current_idx(id);
+    broadcasting->change_P_idx(id, RND(0, broadcasting->get_idx_size(id) - 1));
+}
+
+void SinglePExchangeByIdx::roll_back(){
+    broadcasting->change_P_idx(id, old_idx);
+}
 Neighborhood *select_neighborhood(Broadcasting &broadcasting){
-    return SinglePExchange::get_object(&broadcasting);
+    return SinglePExchangeByIdx::get_object(&broadcasting);
 }
 
 int main(){
