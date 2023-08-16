@@ -103,9 +103,9 @@ struct graph {
     int id;
 };
 
-int get_D(int &x, int &y, int &u, int &v) {
+ll get_D(int &x, int &y, int &u, int &v) {
     int d = (x - u) * (x - u) + (y - v) * (y - v);
-    double r = round(sqrt(d));
+    double r = round(sqrt(d) + 0.5);
     return int(r);
 }
 
@@ -161,23 +161,27 @@ public:
 };
 
 Broadcasting::Broadcasting(){
-    P = vector<ll>(N, 5000);
+    P = vector<ll>(N, 0);
     P_cost = 0;
     W_cost = 0;
     score = INF<ll>();
-    rep(i, N)P_cost += P[i] * P[i];
     covered_by.resize(K);
     cover_to.resize(N);
     rep(i, K){
+        ll minl = INF<int>(), mini = -1;
         rep(j, N){
-            if(get_D(A[i], B[i], X[j], Y[j]) <= P[j]){
-                covered_by[i].insert(j);
-                cover_to[j].insert(i);
+            if(chmin(minl, get_D(X[j], Y[j], A[i], B[i]))){
+                mini = j;
             }
         }
+        chmax(P[mini], minl);
+        cover_to[mini].insert(i);
+        covered_by[i].insert(mini);
     }
+    rep(i, N)P_cost += P[i] * P[i];
     is_in_set.resize(M);
     rep(i, N)using_power.insert(i);
+    W_cost = get_W_cost_naivety();
 }
 
 vector<ll> steiner_dist;
@@ -315,7 +319,7 @@ int main(){
 
     while(true){
         iteration++;
-        if(timer.elapsed() > TIME_LIMIT * 0.98){
+        if(timer.elapsed() > TIME_LIMIT * 0.0){
             break;
         }
 
